@@ -3,6 +3,7 @@ Requirements
 	•	Fiji (with the ability to run macros)
 	•	cellpose-sam
 	•	Tested on arm64 Macs
+
 Usage
 
 Directory Structure
@@ -29,7 +30,7 @@ Step-by-Step Instructions
 
 
     3.	Run Fiji for EDoF Processing
-	    •	Install the required plug-in in Fiji.
+	    •	Install the required plug-in in Fiji. The plug-in located in "/utils/Extended_Depth_Field.jar" is needed.
 	    •	Open Fiji and run the macro file: EDoF_Macro.ijm
 	    •	This step will generate processed images under:
             <output_root>/EDoF/<well_name>/<time_point_name>/
