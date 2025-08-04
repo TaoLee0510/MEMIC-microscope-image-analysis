@@ -114,40 +114,24 @@ def segment_tiles(cropped_root: str, segmented_root: str, diameter=30):
             save_coords(coords_bf,   "cell_coordinates_bf.csv")
             save_coords(coords_fl,   "cell_coordinates_fl.csv")
 
-            # Save BF and FL binary masks
-            bf_mask_path = os.path.join(out, "mask_bf.tiff")
-            tifffile.imwrite(bf_mask_path, mosaic_bf.astype(np.uint8) * 255)
-            print(f"[segment] saved BF mask → {bf_mask_path}")
+            # Save binary masks
+            tifffile.imwrite(os.path.join(out, "mask_bf.tiff"), mosaic_bf.astype(np.uint8) * 255)
+            tifffile.imwrite(os.path.join(out, "mask_fl.tiff"), mosaic_fl.astype(np.uint8) * 255)
 
-            fl_mask_path = os.path.join(out, "mask_fl.tiff")
-            tifffile.imwrite(fl_mask_path, mosaic_fl.astype(np.uint8) * 255)
-            print(f"[segment] saved FL mask → {fl_mask_path}")
-
-            # Create colored mask for BF and overlay on BF image
+            # Overlay and save BF
             labels_bf = label(mosaic_bf)
-            # Generate color mask (float in [0,1])
-            color_bf = label2rgb(labels_bf, image=None, bg_label=0)
-            color_bf = (color_bf * 255).astype(np.uint8)  # to uint8 RGB
-            # Convert BF image to uint8 and then to BGR
             bf_uint8 = cv2.convertScaleAbs(bf)
             bf_bgr = cv2.cvtColor(bf_uint8, cv2.COLOR_GRAY2BGR)
-            # Blend original and mask
-            overlay_bf = cv2.addWeighted(bf_bgr, 0.7, color_bf, 0.3, 0)
-            overlay_bf_path = os.path.join(out, "overlay_bf.tiff")
-            tifffile.imwrite(overlay_bf_path, overlay_bf)
-            print(f"[segment] saved BF overlay → {overlay_bf_path}")
+            overlay_bf = mask_overlay(bf_bgr, labels_bf)
+            tifffile.imwrite(os.path.join(out, "overlay_bf.tiff"), overlay_bf)
 
-            # Create colored mask for FL and overlay on FL image
+            # Overlay and save FL
             labels_fl = label(mosaic_fl)
-            color_fl = label2rgb(labels_fl, image=None, bg_label=0)
-            color_fl = (color_fl * 255).astype(np.uint8)
-            # Convert FL image to uint8 and then to BGR
             fl_uint8 = cv2.convertScaleAbs(fl)
             fl_bgr = cv2.cvtColor(fl_uint8, cv2.COLOR_GRAY2BGR)
-            overlay_fl = cv2.addWeighted(fl_bgr, 0.7, color_fl, 0.3, 0)
-            overlay_fl_path = os.path.join(out, "overlay_fl.tiff")
-            tifffile.imwrite(overlay_fl_path, overlay_fl)
-            print(f"[segment] saved FL overlay → {overlay_fl_path}")
+            overlay_fl = mask_overlay(fl_bgr, labels_fl)
+            tifffile.imwrite(os.path.join(out, "overlay_fl.tiff"), overlay_fl)
+
 
             # Write summary statistics
             summary_path = os.path.join(out, "segmentation_summary.txt")

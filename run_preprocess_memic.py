@@ -1,47 +1,40 @@
 #!/usr/bin/env python3
-"""
-run_preprocess_memic.py
-
-Simple CLI wrapper for PreProcess_MEMIC_images.preprocess_memic_images.
-"""
+# run_pipeline.py
 
 import sys
 import os
-# Add utils directory to Python path so we can import from it
-script_dir = os.path.dirname(os.path.abspath(__file__))
-utils_dir  = os.path.join(script_dir, 'utils')
-sys.path.insert(0, utils_dir)
-
-import concurrent.futures
-from PreProcess_MEMIC_images import preprocess_one_tp
+from stitch     import stitch_images
+from crop       import crop_images
+from segment    import segment_tiles
+from analysis   import analyze_counts
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: run_preprocess_memic.py <input_root> <output_root>")
+    if len(sys.argv)!=3:
+        print("Usage: run_pipeline.py <EDoF_root> <Output_root>")
         sys.exit(1)
-    input_root = sys.argv[1]
-    output_root = sys.argv[2]
 
-    print(f"Preprocessing MEMIC images in parallel:\n  input:  {input_root}\n  output: {output_root}")
+    edof_root   = sys.argv[1].rstrip(os.sep)
+    out_root    = sys.argv[2].rstrip(os.sep)
 
-    # Collect all (well, tp) pairs
-    tasks = []
-    for well in sorted(os.listdir(input_root)):
-        well_path = os.path.join(input_root, well)
-        if not os.path.isdir(well_path):
-            continue
-        for tp in sorted(os.listdir(well_path)):
-            tasks.append((input_root, output_root, well, tp))
+    # define sub-roots for each step
+    stitched_root  = os.path.join(out_root, "stitched")
+    cropped_root   = os.path.join(out_root, "cropped")
+    segmented_root = os.path.join(out_root, "segmented")
+    analysis_root  = os.path.join(out_root, "analysis")
 
-    # Run each tp on its own core (reserve 1 core for system)
-    max_workers = max(1, os.cpu_count() - 1)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as exec:
-        futures = [exec.submit(preprocess_one_tp, *args) for args in tasks]
-        for fut in concurrent.futures.as_completed(futures):
-            # propagate exceptions if any
-            fut.result()
+    print("=== Step 2: stitching ===")
+    stitch_images(edof_root, stitched_root)
 
-    print("Done.")
+    print("\n=== Step 3: cropping ===")
+    crop_images(stitched_root, cropped_root)
 
-if __name__ == "__main__":
+    print("\n=== Step 4: segmentation ===")
+    segment_tiles(cropped_root, segmented_root)
+
+    print("\n=== Step 5: analysis ===")
+    analyze_counts(segmented_root, analysis_root)
+
+    print("\nPipeline complete. Results in:", out_root)
+
+if __name__=="__main__":
     main()
