@@ -15,7 +15,8 @@ Example: "/images/MEMIC_output"
 
 
 Step-by-Step Instructions
-	1.	Install Dependencies
+	
+ 	1.	Install Dependencies
         pip install -r requirements.txt
 
 
