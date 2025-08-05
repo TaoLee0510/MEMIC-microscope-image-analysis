@@ -9,6 +9,7 @@ import numpy as np
 import tifffile
 import random
 from cellpose import models
+from cellpose.plot import mask_overlay
 from skimage.measure import regionprops
 import gc
 import concurrent.futures
@@ -17,6 +18,9 @@ from skimage.measure import label
 from skimage.color import label2rgb
 
 import torch
+
+from tqdm import tqdm
+
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 print(device)
@@ -31,22 +35,21 @@ def _init_worker(model_path, use_gpu):
 def _process_tile(args):
     global model
     tb, tf, x0, y0, sub_w, sub_h, diameter = args
-    mb, *_ = model.eval(tb, diameter=diameter, channels=[0,0], flow_threshold=0.4, cellprob_threshold=0)
-    mf, *_ = model.eval(tf, diameter=diameter, channels=[0,0], flow_threshold=0.4, cellprob_threshold=0)
+    mb, *_ = model.eval(tb, diameter=diameter_bf, channels=[0,0], flow_threshold=3, cellprob_threshold=0)
+    mf, *_ = model.eval(tf, diameter=diameter_fl, channels=[0,0], flow_threshold=2, cellprob_threshold=-2)
     coords_b = [(int(p.centroid[1]+x0), int(p.centroid[0]+y0)) for p in regionprops(mb.astype(int))]
     coords_f = [(int(p.centroid[1]+x0), int(p.centroid[0]+y0)) for p in regionprops(mf.astype(int))]
     mask_b = (mb > 0)
     mask_f = (mf > 0)
     return coords_b, coords_f, x0, y0, sub_h, sub_w, mask_b, mask_f
 
-def segment_tiles(cropped_root: str, segmented_root: str, diameter=30):
+def segment_tiles(cropped_root: str, segmented_root: str, diameter_bf=100, diameter_fl=10):
     """
     Splits each cropped BF/FL pair into random 10–14×10–14 overlapping tiles,
     runs Cellpose on each for BF and FL, stitches overlays & collects centroids.
     Saves in <segmented_root>/<well_id>/<tp>/:
       overlay_masks.tiff, cell_coordinates.csv, cell_coordinates_bf.csv, cell_coordinates_fl.csv, cellpose_evaluation.txt
     """
-    #model = models.CellposeModel(gpu=False, model_type='cyto3')
 
 
     for well_id in sorted(os.listdir(cropped_root)):
@@ -86,15 +89,15 @@ def segment_tiles(cropped_root: str, segmented_root: str, diameter=30):
                     y0 = min(i*step_y, H-sub_h)
                     tb = bf[y0:y0+sub_h, x0:x0+sub_w]
                     tf = fl[y0:y0+sub_h, x0:x0+sub_w]
-                    tasks.append((tb, tf, x0, y0, sub_w, sub_h, diameter, None))
+                    tasks.append((tb, tf, x0, y0, sub_w, sub_h, diameter_bf,diameter_fl, None))
 
             # Reserve 1 CPU core for system, use remaining cores for segmentation
-            num_cpus = max(1, os.cpu_count() - 2)
+            num_cpus = max(1, os.cpu_count() -2)
             # Process tiles in parallel
             #model_path = '/Volumes/Work_Active_1/MEMIC/models/cellpose_residual_default_on_style_on_concatenation_off_train_2021_08_24_17'
-            model_path='cyto3'
+            model_path='cpsam'
             use_gpu = True
-            tasks_args = [(tb, tf, x0, y0, sub_w, sub_h, diameter) for (tb, tf, x0, y0, sub_w, sub_h, diameter, _) in tasks]
+            tasks_args = [(tb, tf, x0, y0, sub_w, sub_h, diameter_bf,diameter_fl) for (tb, tf, x0, y0, sub_w, sub_h, diameter_bf,diameter_fl, _) in tasks]
 
             with concurrent.futures.ProcessPoolExecutor(
                     max_workers=num_cpus,
@@ -118,19 +121,12 @@ def segment_tiles(cropped_root: str, segmented_root: str, diameter=30):
             tifffile.imwrite(os.path.join(out, "mask_bf.tiff"), mosaic_bf.astype(np.uint8) * 255)
             tifffile.imwrite(os.path.join(out, "mask_fl.tiff"), mosaic_fl.astype(np.uint8) * 255)
 
-            # Overlay and save BF
-            labels_bf = label(mosaic_bf)
-            bf_uint8 = cv2.convertScaleAbs(bf)
-            bf_bgr = cv2.cvtColor(bf_uint8, cv2.COLOR_GRAY2BGR)
-            overlay_bf = mask_overlay(bf_bgr, labels_bf)
-            tifffile.imwrite(os.path.join(out, "overlay_bf.tiff"), overlay_bf)
-
-            # Overlay and save FL
-            labels_fl = label(mosaic_fl)
-            fl_uint8 = cv2.convertScaleAbs(fl)
-            fl_bgr = cv2.cvtColor(fl_uint8, cv2.COLOR_GRAY2BGR)
-            overlay_fl = mask_overlay(fl_bgr, labels_fl)
-            tifffile.imwrite(os.path.join(out, "overlay_fl.tiff"), overlay_fl)
+            # Generate visualization overlays
+            bf_mask = mask_overlay(bf, mosaic_bf, colors=None)
+            fl_mask = mask_overlay(fl, mosaic_fl, colors=None)
+            # Save overlays
+            cv2.imwrite(os.path.join(out, "fl_overlay.tiff"),fl_mask)
+            cv2.imwrite(os.path.join(out, "bf_overlay.tiff"),bf_mask)
 
 
             # Write summary statistics
